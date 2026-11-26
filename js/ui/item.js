@@ -19,7 +19,7 @@ export function itemView(ctx, path) {
   let meta = [];
   if (p.kind === 'memory') {
     head = header({ eyebrow: p.chapter ? `Memory-Bound · ${p.chapter}` : 'Memory-Bound', title: whenLabel(p.when), section: 'past' });
-    meta = [p.people && `With ${p.people}`, p.place && `At ${p.place}`, p.split && 'Marked for splitting', p.analyze === false && 'Never sent to Claude'].filter(Boolean);
+    meta = [p.people && `With ${p.people}`, p.place && `At ${p.place}`, p.split && 'Marked for splitting', p.from && 'Split from a longer memory', p.analyze === false && 'Never sent to Claude'].filter(Boolean);
   } else if (p.kind === 'summary') {
     head = header({ eyebrow: 'Weekly', title: itemTitle(p), section: 'week' });
   } else {

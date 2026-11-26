@@ -1,4 +1,4 @@
-const VERSION = 'odometer-v1';
+const VERSION = 'odometer-v2';
 
 const SHELL = [
   './',
@@ -22,6 +22,7 @@ const SHELL = [
   'js/store.js',
   'js/vault.js',
   'js/ui/dom.js',
+  'js/ui/export.js',
   'js/ui/gate.js',
   'js/ui/icons.js',
   'js/ui/item.js',
@@ -30,6 +31,7 @@ const SHELL = [
   'js/ui/past.js',
   'js/ui/settings.js',
   'js/ui/shell.js',
+  'js/ui/stats.js',
   'js/ui/timeline.js',
   'js/ui/weekly.js',
   'js/ui/write.js',

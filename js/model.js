@@ -256,3 +256,117 @@ export function dailyMark(d = new Date()) {
   if (order[0] === prev[3]) [order[0], order[1]] = [order[1], order[0]];
   return MARKS[order[day % 4]];
 }
+
+export function wordCount(text) {
+  return (String(text || '').match(/\S+/g) || []).length;
+}
+
+export function streaks(entries, today) {
+  const days = new Set(entries.map((x) => x.payload.date).filter(Boolean));
+  let current = 0;
+  let d = parseYmd(today);
+  if (!days.has(today)) d = addDays(d, -1);
+  while (days.has(ymd(d))) {
+    current++;
+    d = addDays(d, -1);
+  }
+  let longest = 0;
+  let run = 0;
+  let prev = null;
+  for (const k of [...days].sort()) {
+    run = prev && ymd(addDays(parseYmd(prev), 1)) === k ? run + 1 : 1;
+    longest = Math.max(longest, run);
+    prev = k;
+  }
+  return { current, longest, days: days.size };
+}
+
+export function wordStats(items, monthPrefix) {
+  const written = items.filter((x) => x.payload.kind === 'entry' || x.payload.kind === 'memory');
+  const entries = written.filter((x) => x.payload.kind === 'entry');
+  const total = written.reduce((a, x) => a + wordCount(x.payload.text), 0);
+  const month = entries.filter((x) => (x.payload.date || '').startsWith(monthPrefix)).reduce((a, x) => a + wordCount(x.payload.text), 0);
+  const perEntry = entries.length ? Math.round(entries.reduce((a, x) => a + wordCount(x.payload.text), 0) / entries.length) : 0;
+  return { total, month, perEntry };
+}
+
+function avgOf(list) {
+  const ms = list.map((x) => Number(x.payload.mood)).filter((m) => m >= 1 && m <= 10);
+  return ms.length ? ms.reduce((a, b) => a + b, 0) / ms.length : null;
+}
+
+export function weeklyTrend(entries, today, weeks = 12) {
+  const dates = byDate(entries);
+  const start = startOfWeek(parseYmd(today));
+  const out = [];
+  for (let i = weeks - 1; i >= 0; i--) {
+    const s = addDays(start, -7 * i);
+    const list = [];
+    for (let k = 0; k < 7; k++) list.push(...(dates.get(ymd(addDays(s, k))) || []));
+    out.push({ start: ymd(s), avg: avgOf(list), count: list.length });
+  }
+  return out;
+}
+
+export function moodByWeekday(entries) {
+  const groups = Array.from({ length: 7 }, () => []);
+  for (const x of entries) if (x.payload.date) groups[parseYmd(x.payload.date).getDay()].push(x);
+  return groups.map((g) => ({ avg: avgOf(g), count: g.length }));
+}
+
+export function moodByTag(entries, minCount = 2) {
+  const groups = new Map();
+  for (const x of entries) for (const t of x.payload.tags || []) {
+    if (!groups.has(t)) groups.set(t, []);
+    groups.get(t).push(x);
+  }
+  return [...groups]
+    .map(([name, g]) => ({ name, avg: avgOf(g), count: g.length }))
+    .filter((t) => t.count >= minCount && t.avg != null)
+    .sort((a, b) => b.avg - a.avg || b.count - a.count);
+}
+
+export function coverage(memories, nowYear) {
+  const g = yearGrid(memories, nowYear);
+  const covered = g.years.filter((y) => y.count > 0).length;
+  return { ...g, covered, total: g.years.length };
+}
+
+export function itemKey(p) {
+  if (p.kind === 'entry') return p.date || '';
+  if (p.kind === 'memory') return p.when && p.when.precision !== 'age' ? String(p.when.value || '') : '';
+  return '';
+}
+
+export function exportItems(items, prefix, withMemories = true) {
+  return items
+    .filter((x) => x.payload.kind === 'entry' || (withMemories && x.payload.kind === 'memory'))
+    .filter((x) => (prefix ? itemKey(x.payload).startsWith(prefix) : true))
+    .sort((a, b) => {
+      const ka = itemKey(a.payload) || '~';
+      const kb = itemKey(b.payload) || '~';
+      return ka < kb ? -1 : ka > kb ? 1 : (a.payload.created || '') < (b.payload.created || '') ? -1 : 1;
+    });
+}
+
+export function rangeTitle(prefix) {
+  if (!prefix) return 'Everything';
+  if (prefix.length === 4) return prefix;
+  const [y, m] = prefix.split('-').map(Number);
+  return `${MONTHS[m - 1]} ${y}`;
+}
+
+export function itemHeading(p) {
+  if (p.kind === 'memory') {
+    return ['Memory', whenLabel(p.when), p.chapter, p.people && `with ${p.people}`, p.place && `at ${p.place}`].filter(Boolean).join(' · ');
+  }
+  const d = parseYmd(p.date);
+  const m = mood(p.mood);
+  return [`${shortDate(d)}, ${d.getFullYear()}`, p.mood ? `mood ${m.n} (${m.word})` : '', (p.tags || []).map((t) => '#' + t).join(' ')].filter(Boolean).join(' · ');
+}
+
+export function toMarkdown(items, prefix) {
+  const parts = [`# Odometer · ${rangeTitle(prefix)}`, `_${items.length} item${items.length === 1 ? '' : 's'} · exported from Odometer · not encrypted_`];
+  for (const x of items) parts.push(`## ${itemHeading(x.payload)}\n\n${String(x.payload.text || '').trim()}`);
+  return parts.join('\n\n---\n\n') + '\n';
+}

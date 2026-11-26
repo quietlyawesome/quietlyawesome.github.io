@@ -7,7 +7,7 @@ from datetime import date
 from pathlib import Path
 
 from odo import crypto as c
-from odo import gitrepo, keychain, store, weekly
+from odo import ask, claude, gitrepo, keychain, split, store, weekly
 
 
 def config_path():
@@ -133,6 +133,59 @@ def cmd_weekly(args):
     print("Summary saved and pushed. Open Weekly in Odometer.")
 
 
+def write_objects(root, mk, payloads):
+    key = c.object_key(mk)
+    paths = []
+    for p in payloads:
+        path = c.new_object_path()
+        target = root / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(c.encrypt_object(key, path, p), encoding="utf-8")
+        paths.append(path)
+    return paths
+
+
+def cmd_split(args):
+    root = repo_of(args)
+    mk = unlock(root, args.phrase)
+    gitrepo.pull(root)
+    todo = split.pending(store.load_items(root, mk))
+    allowed = [(path, p) for path, p in todo if p.get("analyze") is True]
+    if len(allowed) < len(todo):
+        print(f"{len(todo) - len(allowed)} memory(ies) marked for splitting are not allowed for Claude analysis; skipped.")
+    print(f"{len(allowed)} memory(ies) to split.")
+    if not allowed or args.dry_run:
+        if args.dry_run:
+            print("Dry run: nothing sent to Claude.")
+        return
+    gitrepo.check_identity(root)
+    new = []
+    for i, (path, p) in enumerate(allowed, 1):
+        print(f"Splitting {i}/{len(allowed)}…")
+        parts = split.parse(claude.run(split.build_prompt(p)), p, path)
+        new.extend(parts)
+        print(f"  → {len(parts)} memories")
+    gitrepo.commit_push(root, write_objects(root, mk, new), "entry")
+    print(f"Saved {len(new)} new memories (originals kept). Open Memory-Bound in Odometer.")
+
+
+def cmd_ask(args):
+    root = repo_of(args)
+    question = " ".join(args.question).strip()
+    if not question:
+        sys.exit("odo: ask a question, e.g. odo ask \"what made October good?\"")
+    since = date.fromisoformat(args.since).isoformat() if args.since else None
+    mk = unlock(root, args.phrase)
+    gitrepo.pull(root)
+    payloads = ask.eligible(store.load_payloads(root, mk), since)
+    if not payloads:
+        sys.exit("odo: nothing allowed for Claude analysis in that range")
+    prompt, used, dropped = ask.build_prompt(question, payloads)
+    note = f" ({dropped} oldest left out to fit)" if dropped else ""
+    print(f"Asking Claude about {used} item(s){note}…", file=sys.stderr)
+    print(claude.run(prompt))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="odo", description="Odometer on the Mac")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -160,10 +213,23 @@ def main(argv=None):
     p.add_argument("--force", action="store_true", help="write a newer summary for a week that has one")
     p.set_defaults(fn=cmd_weekly)
 
+    p = sub.add_parser("split", help="split memories marked 'Split into memories' into dated memories with Claude")
+    p.add_argument("--repo")
+    p.add_argument("--phrase", action="store_true")
+    p.add_argument("--dry-run", action="store_true")
+    p.set_defaults(fn=cmd_split)
+
+    p = sub.add_parser("ask", help="ask Claude a question about your entries (nothing is saved)")
+    p.add_argument("question", nargs="+")
+    p.add_argument("--repo")
+    p.add_argument("--since", help="only entries from this date, YYYY-MM-DD")
+    p.add_argument("--phrase", action="store_true")
+    p.set_defaults(fn=cmd_ask)
+
     args = ap.parse_args(argv)
     try:
         args.fn(args)
-    except (c.CryptoError, keychain.KeyHelperError, gitrepo.GitError, weekly.WeeklyError) as e:
+    except (c.CryptoError, keychain.KeyHelperError, gitrepo.GitError, weekly.WeeklyError, claude.ClaudeError, split.SplitError, ValueError) as e:
         sys.exit(f"odo: {e}")
 
 

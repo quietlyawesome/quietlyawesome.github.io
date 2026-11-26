@@ -1,10 +1,7 @@
 import json
-import os
-import re
-import shutil
-import subprocess
-import tempfile
 from datetime import date, datetime, timedelta
+
+from odo import claude
 
 PROMPT = """You are writing a weekly reflection for the private diary of one person, who will read it in their diary app.
 
@@ -68,10 +65,6 @@ def build_prompt(entries, start):
     return PROMPT.format(start=start.strftime("%b %d"), end=end.strftime("%b %d"), entries="\n\n".join(blocks))
 
 
-def claude_command():
-    return [os.environ.get("ODO_CLAUDE_BIN", "claude"), "-p", "--no-session-persistence", "--safe-mode", "--tools", "", "--output-format", "json"]
-
-
 def parse_reply(raw):
     try:
         outer = json.loads(raw)
@@ -79,15 +72,14 @@ def parse_reply(raw):
         raise WeeklyError("claude returned something that is not JSON") from None
     if outer.get("is_error"):
         raise WeeklyError(f"claude failed: {outer.get('result')}")
-    text = str(outer.get("result", "")).strip()
-    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text)
-    m = re.search(r"\{.*\}", text, re.S)
-    if not m:
-        raise WeeklyError("claude did not return a JSON summary")
+    return clean_reply(str(outer.get("result", "")))
+
+
+def clean_reply(text):
     try:
-        data = json.loads(m.group(0))
-    except ValueError:
-        raise WeeklyError("claude returned a malformed summary") from None
+        data = claude.json_object(text)
+    except claude.ClaudeError as e:
+        raise WeeklyError(str(e)) from None
     summary = str(data.get("text", "")).strip()
     if not summary:
         raise WeeklyError("claude returned an empty summary")
@@ -102,17 +94,11 @@ def parse_reply(raw):
     return {"text": summary, "themes": themes[:5], "question": str(data.get("question", "")).strip()}
 
 
-def ask_claude(prompt, timeout=600):
-    workdir = tempfile.mkdtemp(prefix="odo-weekly-")
+def ask_claude(prompt):
     try:
-        p = subprocess.run(claude_command(), input=prompt, capture_output=True, text=True, cwd=workdir, timeout=timeout)
-        if p.returncode and not p.stdout.strip():
-            raise WeeklyError(f"claude exited with {p.returncode}: {p.stderr.strip()[:300]}")
-        return parse_reply(p.stdout)
-    except subprocess.TimeoutExpired:
-        raise WeeklyError("claude took too long") from None
-    finally:
-        shutil.rmtree(workdir, ignore_errors=True)
+        return clean_reply(claude.run(prompt))
+    except claude.ClaudeError as e:
+        raise WeeklyError(str(e)) from None
 
 
 def summary_payload(start, reply, now=None):

@@ -30,6 +30,7 @@ export function timelineView(ctx) {
     title: monthName(m),
     section: 'time',
     actions: [
+      iconButton('download', 'Export', () => ctx.go('export'), 'phone-only'),
       iconButton('left', 'Previous month', () => shift(-1)),
       Object.assign(iconButton('right', 'Next month', () => shift(1)), { disabled: isCurrent }),
     ],

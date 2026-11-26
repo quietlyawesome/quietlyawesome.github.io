@@ -10,9 +10,11 @@ import { pastView, memoryView } from './ui/past.js';
 import { weeklyView } from './ui/weekly.js';
 import { itemView } from './ui/item.js';
 import { settingsView } from './ui/settings.js';
+import { statsView } from './ui/stats.js';
+import { exportView } from './ui/export.js';
 import { applyDailyFavicon } from './ui/marks.js';
 
-const VIEWS = { write: writeView, timeline: timelineView, past: pastView, memory: memoryView, weekly: weeklyView, item: itemView, settings: settingsView };
+const VIEWS = { write: writeView, timeline: timelineView, past: pastView, memory: memoryView, weekly: weeklyView, item: itemView, settings: settingsView, stats: statsView, export: exportView };
 const FORMS = new Set(['write', 'memory']);
 const IDLE_MS = 5 * 60 * 1000;
 const REFRESH_MS = 60 * 1000;

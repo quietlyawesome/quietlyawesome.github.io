@@ -32,6 +32,7 @@ export function weeklyView(ctx) {
     title: key === ymd(thisWeek) ? 'Your week' : 'That week',
     section: 'week',
     actions: [
+      iconButton('chart', 'Stats', () => ctx.go('stats')),
       iconButton('left', 'Previous week', () => shift(-1)),
       Object.assign(iconButton('right', 'Next week', () => shift(1)), { disabled: key >= ymd(thisWeek) }),
     ],

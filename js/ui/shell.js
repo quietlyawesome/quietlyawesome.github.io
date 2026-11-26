@@ -11,7 +11,7 @@ const TABS = [
   ['weekly', 'Weekly', 'week'],
 ];
 
-const SECTION_OF = { write: 'write', timeline: 'timeline', item: 'timeline', past: 'past', memory: 'past', weekly: 'weekly' };
+const SECTION_OF = { write: 'write', timeline: 'timeline', item: 'timeline', export: 'timeline', past: 'past', memory: 'past', weekly: 'weekly', stats: 'weekly' };
 
 export function createShell(root, ctx) {
   const toast = h('div', { class: 'toast', role: 'status', 'aria-live': 'polite' });
@@ -21,6 +21,7 @@ export function createShell(root, ctx) {
   const topbar = h('div', { class: 'topbar' },
     topDate,
     h('div', { class: 'vh-actions' },
+      h('button', { type: 'button', class: 'btn secondary small', onclick: () => ctx.go('export') }, icon('download', 16), 'Export'),
       iconButton('settings', 'Settings', () => ctx.go('settings')),
       iconButton('lock', 'Lock', () => ctx.lock())));
   const tabbar = h('nav', { class: 'tabbar', 'aria-label': 'Sections' });
@@ -91,6 +92,7 @@ export function createShell(root, ctx) {
         recent.length ? recent : h('p', { class: 'muted small' }, 'No entries yet.'),
         h('a', { class: `side-link c-time${route === 'timeline' ? ' on' : ''}`, href: '#/timeline' }, icon('timeline', 16), 'Timeline'),
         h('a', { class: `side-link c-week${route === 'weekly' ? ' on' : ''}`, href: '#/weekly' }, icon('weekly', 16), 'Weekly summary'),
+        h('a', { class: `side-link c-week${route === 'stats' ? ' on' : ''}`, href: '#/stats' }, icon('chart', 16), 'Stats'),
         h('a', { class: `side-link c-past${route === 'past' || route === 'memory' ? ' on' : ''}`, href: '#/past' }, icon('past', 16), 'Memory-Bound · add a memory')),
       h('div', { class: 'sync' }, dot(status[1]), `${status[0]} · end-to-end encrypted`));
   }

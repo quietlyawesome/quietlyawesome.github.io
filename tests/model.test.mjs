@@ -80,3 +80,40 @@ test('daily mark shows all four every 4 days, never twice in a row', () => {
   for (let i = offset; i + 4 <= seen.length; i += 4) assert.equal(new Set(seen.slice(i, i + 4)).size, 4);
   assert.equal(m.dailyMark(new Date(2026, 5, 1, 1)), m.dailyMark(new Date(2026, 5, 1, 23)));
 });
+
+test('streaks count back from today or yesterday', () => {
+  const es = ['2026-11-20', '2026-11-21', '2026-11-22', '2026-11-24', '2026-11-25'].map((d) => entry(d, 5));
+  assert.deepEqual(m.streaks(es, '2026-11-25'), { current: 2, longest: 3, days: 5 });
+  assert.equal(m.streaks(es, '2026-11-26').current, 2);
+  assert.equal(m.streaks(es, '2026-11-27').current, 0);
+  assert.equal(m.streaks([], '2026-11-27').longest, 0);
+});
+
+test('word stats, weekly trend, weekday and tag moods', () => {
+  const es = [entry('2026-11-22', 8, ['gym']), entry('2026-11-23', 4, ['work']), entry('2026-11-24', 6, ['work', 'gym']), entry('2026-10-01', 2, ['work'])];
+  es[0].payload.text = 'one two three';
+  const w = m.wordStats(es, '2026-11');
+  assert.equal(w.month, 3 + 2 + 2);
+  const t = m.weeklyTrend(es, '2026-11-26', 3);
+  assert.deepEqual(t.map((x) => x.start), ['2026-11-08', '2026-11-15', '2026-11-22']);
+  assert.equal(t[2].avg, 6);
+  assert.equal(t[0].avg, null);
+  const wd = m.moodByWeekday(es);
+  assert.equal(wd[0].avg, 8);
+  assert.equal(wd[1].count, 1);
+  assert.deepEqual(m.moodByTag(es).map((x) => [x.name, x.avg]), [['gym', 7], ['work', 4]]);
+});
+
+test('export picks a month, sorts by date, writes Markdown', () => {
+  const items = [entry('2026-10-31', 7, ['work']), entry('2026-10-02', 3), entry('2026-11-01', 5),
+    memory({ precision: 'month', value: '2026-10' }, 'Now'), memory({ precision: 'age', value: '7' }, 'Childhood')];
+  const oct = m.exportItems(items, '2026-10');
+  assert.deepEqual(oct.map((x) => m.itemKey(x.payload)), ['2026-10', '2026-10-02', '2026-10-31']);
+  assert.equal(m.exportItems(items, '2026-10', false).length, 2);
+  assert.equal(m.exportItems(items, '').length, 5);
+  const md = m.toMarkdown(oct, '2026-10');
+  assert.match(md, /^# Odometer · October 2026/);
+  assert.match(md, /## Sat, Oct 31, 2026 · mood 7 \(Good\) · #work/);
+  assert.match(md, /## Memory · October 2026 · Now/);
+  assert.equal(m.rangeTitle('2026'), '2026');
+});

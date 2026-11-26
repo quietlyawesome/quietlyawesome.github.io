@@ -9,6 +9,7 @@ export const INFO = Object.freeze({
   mac: 'diary-mac-v1',
   object: 'diary-object-v1',
   check: 'diary-check-v1',
+  draft: 'diary-draft-v1',
 });
 export const BUCKETS = Object.freeze([4096, 16384, 65536, 262144]);
 
@@ -79,6 +80,7 @@ export const tokenKey = (prf) => deriveAes(prf, INFO.token);
 export const recoveryWrapKey = (secret, salt) => deriveAes(secret, INFO.recovery, salt);
 export const macWrapKey = (secret) => deriveAes(secret, INFO.mac);
 export const objectKey = (mk) => deriveAes(mk, INFO.object);
+export const draftKey = (mk) => deriveAes(mk, INFO.draft);
 
 async function seal(key, iv, data, aad) {
   if (iv.length !== 12) fail('bad iv');

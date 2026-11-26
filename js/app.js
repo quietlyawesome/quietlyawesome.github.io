@@ -1,162 +1,250 @@
-import { createVault, newEntry, localStamp } from './vault.js';
+import { createVault } from './vault.js';
 import { openStore } from './store.js';
 import * as passkeys from './passkey.js';
+import { idleLock } from './idle.js';
+import { createShell } from './ui/shell.js';
+import { unlockScreen, setupScreen, recoveryScreen } from './ui/gate.js';
+import { writeView } from './ui/write.js';
+import { timelineView } from './ui/timeline.js';
+import { pastView, memoryView } from './ui/past.js';
+import { weeklyView } from './ui/weekly.js';
+import { itemView } from './ui/item.js';
+import { settingsView } from './ui/settings.js';
+import { applyDailyFavicon } from './ui/marks.js';
 
-const $ = (id) => document.getElementById(id);
-const SCREENS = ['setup', 'recovery', 'locked', 'main'];
+const VIEWS = { write: writeView, timeline: timelineView, past: pastView, memory: memoryView, weekly: weeklyView, item: itemView, settings: settingsView };
+const FORMS = new Set(['write', 'memory']);
+const IDLE_MS = 5 * 60 * 1000;
+const REFRESH_MS = 60 * 1000;
 
 let vault = null;
-let session = null;
+let store = null;
+let shell = null;
 let pending = null;
+let idle = null;
+let lastSync = 0;
+const draftTimers = new Map();
+const media = matchMedia('(prefers-color-scheme: light)');
 
-function show(name) {
-  for (const s of SCREENS) $(s).hidden = s !== name;
-}
-
-function say(message, bad = false) {
-  $('status').textContent = message || '';
-  $('status').className = bad ? 'status bad' : 'status';
-}
+const ctx = {
+  session: null,
+  items: [],
+  drafts: {},
+  ui: {},
+  sync: 'synced',
+  themePref: 'system',
+  go(name) {
+    if (location.hash === `#/${name}`) render();
+    else location.hash = `#/${name}`;
+  },
+  render: (opts) => render(opts),
+  toast: (message, bad) => shell.say(message, bad),
+  readable,
+  lock: (message) => lock(message),
+  forget: () => forget(),
+  setTheme: (pref) => setTheme(pref),
+  saveDraftSoon,
+  unlock: () => unlock(),
+  setup: (repo, token) => setup(repo, token),
+  finishSetup: (answers) => finishSetup(answers),
+  async save(payload, draftName) {
+    const path = await ctx.session.saveItem(payload);
+    ctx.items = [{ path, payload }, ...ctx.items];
+    if (draftName) {
+      clearTimeout(draftTimers.get(draftName));
+      draftTimers.delete(draftName);
+      await ctx.session.clearDraft(draftName);
+    }
+    return path;
+  },
+};
 
 function readable(e) {
-  if (e && e.name === 'NotAllowedError') return 'Face ID was cancelled or timed out.';
+  if (e && e.name === 'NotAllowedError') return 'The passkey prompt was cancelled or timed out.';
+  if (e && e.name === 'InvalidStateError') return 'A passkey for Odometer already exists on this device.';
   return (e && e.message) || String(e);
 }
 
-async function busy(button, fn) {
-  button.disabled = true;
-  say('');
+function route() {
+  const [name, ...rest] = location.hash.replace(/^#\/?/, '').split('/');
+  return { name: VIEWS[name] ? name : 'write', arg: rest.length ? decodeURIComponent(rest.join('/')) : undefined };
+}
+
+function render(opts = {}) {
+  if (!ctx.session) return;
+  const r = route();
   try {
-    await fn();
+    shell.app(r.name, opts.chromeOnly ? null : VIEWS[r.name](ctx, r.arg), opts);
   } catch (e) {
-    say(readable(e), true);
-  } finally {
-    button.disabled = false;
+    shell.say(readable(e), true);
   }
-}
-
-function onSubmit(formId, buttonId, fn) {
-  $(formId).addEventListener('submit', (ev) => {
-    ev.preventDefault();
-    busy($(buttonId), fn);
-  });
-}
-
-function onClick(id, fn) {
-  $(id).addEventListener('click', () => busy($(id), fn));
-}
-
-function renderPhrase(p) {
-  const list = $('phrase');
-  list.replaceChildren(...p.phrase.split('-').map((g) => Object.assign(document.createElement('li'), { textContent: g })));
-  $('check-a-label').textContent = `Type group ${p.checkGroups[0]}`;
-  $('check-b-label').textContent = `Type group ${p.checkGroups[1]}`;
-  $('check-a').value = '';
-  $('check-b').value = '';
-}
-
-function renderEntries(items) {
-  $('entries').replaceChildren(...items.map((x) => {
-    const li = document.createElement('li');
-    const meta = document.createElement('div');
-    meta.className = 'meta';
-    const body = document.createElement('div');
-    body.className = 'body';
-    if (x.error) {
-      meta.textContent = 'Could not decrypt';
-      body.textContent = x.error;
-    } else {
-      const p = x.payload;
-      meta.textContent = [p.date, p.mood ? `mood ${p.mood}` : '', ...(p.tags || []).map((t) => '#' + t)].filter(Boolean).join(' · ');
-      body.textContent = p.text;
-    }
-    li.append(meta, body);
-    return li;
-  }));
 }
 
 async function refresh() {
-  say('Loading…');
-  renderEntries(await session.listEntries());
-  say('');
+  const s = ctx.session;
+  if (!s) return;
+  ctx.sync = 'syncing';
+  render({ chromeOnly: true });
+  try {
+    const items = await s.listItems();
+    if (ctx.session !== s) return;
+    ctx.items = items;
+    ctx.sync = items.offline ? 'offline' : 'synced';
+    lastSync = Date.now();
+  } catch (e) {
+    if (ctx.session !== s) return;
+    ctx.sync = 'error';
+    shell.say(readable(e), true);
+  }
+  render(FORMS.has(route().name) ? { chromeOnly: true } : {});
+}
+
+function saveDraftSoon(name) {
+  clearTimeout(draftTimers.get(name));
+  draftTimers.set(name, setTimeout(() => {
+    draftTimers.delete(name);
+    writeDraft(name);
+  }, 600));
+}
+
+async function writeDraft(name) {
+  const s = ctx.session;
+  const d = ctx.drafts[name];
+  if (!s || !s.isOpen() || !d) return;
+  try {
+    await s.saveDraft(name, d);
+  } catch {
+    shell.say('Could not save the draft on this device.', true);
+  }
+}
+
+async function flushDrafts() {
+  const names = [...draftTimers.keys()];
+  for (const n of names) clearTimeout(draftTimers.get(n));
+  draftTimers.clear();
+  for (const n of names) await writeDraft(n);
 }
 
 async function enter(s) {
-  session = s;
-  $('today').textContent = `${localStamp().date} · ${session.repoName()}`;
-  show('main');
-  await refresh();
+  ctx.session = s;
+  ctx.items = [];
+  ctx.ui = {};
+  ctx.drafts = { entry: await s.loadDraft('entry'), memory: await s.loadDraft('memory') };
+  idle = idleLock(IDLE_MS, () => lock('Locked after 5 minutes without activity.'));
+  if (!VIEWS[route().name] || !location.hash) history.replaceState(null, '', '#/write');
+  render();
+  refresh();
 }
 
-function lock() {
-  if (session) session.lock();
-  session = null;
-  $('entries').replaceChildren();
-  $('text').value = '';
-  show('locked');
-}
-
-onSubmit('setup-form', 'setup-go', async () => {
-  say('Checking repository…');
-  const conn = await vault.connect($('repo').value, $('token').value);
-  if (conn.keyring) {
-    say('Found your keyring. Confirm with Face ID.');
-    const s = await vault.addThisDevice(conn);
-    $('token').value = '';
-    await enter(s);
-  } else {
-    say('New repository. Creating your passkey.');
-    pending = await vault.beginFirstDevice(conn);
-    $('token').value = '';
-    renderPhrase(pending);
-    say('');
-    show('recovery');
+async function unlock() {
+  try {
+    await enter(await vault.unlock());
+  } catch (e) {
+    shell.say(readable(e), true);
   }
-});
+}
 
-onSubmit('recovery-form', 'recovery-go', async () => {
-  const s = await pending.finish([$('check-a').value, $('check-b').value]);
-  pending = null;
-  $('phrase').replaceChildren();
-  await enter(s);
-});
+async function setup(repoText, tokenText) {
+  try {
+    shell.say('Checking repository…');
+    const conn = await vault.connect(repoText, tokenText);
+    if (conn.keyring) {
+      shell.say('Found your keyring. Confirm with your passkey.');
+      const s = await vault.addThisDevice(conn);
+      shell.say('');
+      await enter(s);
+    } else {
+      shell.say('New repository. Creating your passkey.');
+      pending = await vault.beginFirstDevice(conn);
+      shell.say('');
+      shell.solo(recoveryScreen(ctx, pending));
+    }
+  } catch (e) {
+    shell.say(readable(e), true);
+  }
+}
 
-onSubmit('entry-form', 'save', async () => {
-  const text = $('text').value;
-  if (!text.trim()) return;
-  say('Saving…');
-  await session.saveEntry(newEntry({ text, mood: Number($('mood').value) }));
-  $('text').value = '';
-  await refresh();
-  say('Saved.');
-});
+async function finishSetup(answers) {
+  try {
+    const s = await pending.finish(answers);
+    pending = null;
+    await enter(s);
+    shell.say('Odometer is ready. Every day adds a mile.');
+  } catch (e) {
+    shell.say(readable(e), true);
+  }
+}
 
-onClick('unlock', async () => enter(await vault.unlock()));
+async function lock(message) {
+  if (!ctx.session) return;
+  await flushDrafts();
+  if (idle) idle.stop();
+  idle = null;
+  ctx.session.lock();
+  ctx.session = null;
+  ctx.items = [];
+  ctx.drafts = {};
+  ctx.ui = {};
+  shell.solo(unlockScreen(ctx));
+  if (message) shell.say(message);
+}
 
-onClick('lock', async () => lock());
-
-onClick('copy-token', async () => {
-  await navigator.clipboard.writeText(session.token());
-  say('Token copied. Paste it on your other device within 2 minutes.');
-});
-
-onClick('forget', async () => {
-  if (!confirm('Remove Odometer from this device? Your entries stay in GitHub.')) return;
+async function forget() {
+  if (!confirm('Remove Odometer from this device? Your entries stay in GitHub, encrypted.')) return;
+  if (idle) idle.stop();
+  idle = null;
+  if (ctx.session) ctx.session.lock();
+  ctx.session = null;
+  ctx.items = [];
+  ctx.drafts = {};
   await vault.forget();
-  show('setup');
-});
+  await store.put('kv', 'theme', ctx.themePref);
+  shell.solo(setupScreen(ctx));
+}
 
-$('mood').addEventListener('input', () => {
-  $('mood-out').textContent = $('mood').value;
-});
+function applyTheme() {
+  const pref = ctx.themePref;
+  if (pref === 'system') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = pref;
+  const light = pref === 'light' || (pref === 'system' && media.matches);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = light ? '#F7F6FC' : '#0E0C1D';
+}
+
+async function setTheme(pref) {
+  ctx.themePref = pref;
+  applyTheme();
+  await store.put('kv', 'theme', pref);
+}
 
 async function start() {
+  const root = document.getElementById('app');
+  shell = createShell(root, ctx);
+  applyDailyFavicon();
   if (!window.PublicKeyCredential || !window.indexedDB || !window.isSecureContext) {
-    say('This browser cannot run Odometer (needs passkeys over HTTPS).', true);
+    root.textContent = 'This browser cannot run Odometer. It needs passkeys over HTTPS.';
     return;
   }
-  vault = createVault({ store: await openStore(), passkeys, fetch: window.fetch.bind(window) });
-  show((await vault.isSetUp()) ? 'locked' : 'setup');
+  store = await openStore();
+  ctx.themePref = (await store.get('kv', 'theme')) || 'system';
+  applyTheme();
+  media.addEventListener('change', applyTheme);
+  vault = createVault({ store, passkeys, fetch: window.fetch.bind(window) });
+  shell.solo((await vault.isSetUp()) ? unlockScreen(ctx) : setupScreen(ctx));
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 
-start().catch((e) => say(readable(e), true));
+window.addEventListener('hashchange', () => {
+  if (!ctx.session) return;
+  render();
+  window.scrollTo(0, 0);
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && ctx.session && Date.now() - lastSync > REFRESH_MS) refresh();
+  if (document.visibilityState === 'hidden') flushDrafts();
+});
+
+start().catch((e) => {
+  document.getElementById('app').textContent = readable(e);
+});

@@ -1,0 +1,15 @@
+{
+  "name": "Odometer",
+  "short_name": "Odometer",
+  "description": "Every day adds a mile.",
+  "start_url": "./#/write",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0E0C1D",
+  "theme_color": "#0E0C1D",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

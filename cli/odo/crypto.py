@@ -17,6 +17,7 @@ INFO = {
     "mac": "diary-mac-v1",
     "object": "diary-object-v1",
     "check": "diary-check-v1",
+    "draft": "diary-draft-v1",
 }
 BUCKETS = (4096, 16384, 65536, 262144)
 
@@ -74,6 +75,10 @@ def mac_wrap_key(secret):
 
 def object_key(mk):
     return _aes(mk, INFO["object"])
+
+
+def draft_key(mk):
+    return _aes(mk, INFO["draft"])
 
 
 def _seal(key, iv, data, aad):

@@ -42,9 +42,14 @@ export function localStamp(d = new Date()) {
   return { date, created: `${date}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}${zone}` };
 }
 
-export function newEntry({ text, mood, tags = [], analyze = true }, now = new Date()) {
-  const { date, created } = localStamp(now);
-  return { v: 1, kind: 'entry', created, date, mood, tags, analyze, text };
+export function newEntry({ text, mood, tags = [], analyze = true, date }, now = new Date()) {
+  const stamp = localStamp(now);
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(date || '') ? date : stamp.date;
+  return { v: 1, kind: 'entry', created: stamp.created, date: day, mood, tags, analyze, text };
+}
+
+export function newMemory({ when, chapter = '', people = '', place = '', split = false, analyze = true, text }, now = new Date()) {
+  return { v: 1, kind: 'memory', created: localStamp(now).created, when, chapter, people, place, split, analyze, text };
 }
 
 function normGroup(s) {
@@ -179,9 +184,19 @@ export function createVault({ store, passkeys, fetch }) {
       return text;
     }
 
-    async function listEntries() {
+    async function listItems() {
       need();
-      const objs = await conn.gh.listObjects();
+      let objs;
+      let offline = false;
+      try {
+        objs = await conn.gh.listObjects();
+        await store.put('kv', 'index', objs);
+      } catch (e) {
+        if (e.status !== 0) throw e;
+        objs = await store.get('kv', 'index');
+        if (!objs) throw e;
+        offline = true;
+      }
       const key = await objKey;
       const out = new Array(objs.length);
       let next = 0;
@@ -199,10 +214,12 @@ export function createVault({ store, passkeys, fetch }) {
       }
       await Promise.all(Array.from({ length: Math.min(FETCH_PARALLEL, objs.length) }, worker));
       const when = (x) => (x.payload && (x.payload.created || x.payload.date)) || '';
-      return out.sort((a, b) => (when(a) < when(b) ? 1 : when(a) > when(b) ? -1 : 0));
+      const items = out.filter((x) => x).sort((a, b) => (when(a) < when(b) ? 1 : when(a) > when(b) ? -1 : 0));
+      items.offline = offline;
+      return items;
     }
 
-    async function saveEntry(payload) {
+    async function saveItem(payload) {
       need();
       const key = await objKey;
       for (let i = 0; i < 2; i++) {
@@ -213,15 +230,45 @@ export function createVault({ store, passkeys, fetch }) {
       fail('GitHub refused the write');
     }
 
+    let draftKeyP = c.draftKey(mk);
+
+    async function saveDraft(name, obj) {
+      need();
+      const box = await c.sealJSON(await draftKeyP, 'draft:' + name, obj);
+      if (open) await store.put('kv', 'draft:' + name, box);
+    }
+
+    async function loadDraft(name) {
+      need();
+      const box = await store.get('kv', 'draft:' + name);
+      if (!box) return null;
+      try {
+        return await c.openJSON(await draftKeyP, 'draft:' + name, box);
+      } catch {
+        return null;
+      }
+    }
+
+    async function clearDraft(name) {
+      await store.del('kv', 'draft:' + name);
+    }
+
     return {
-      listEntries,
-      saveEntry,
+      listItems,
+      listEntries: listItems,
+      saveItem,
+      saveEntry: saveItem,
+      saveDraft,
+      loadDraft,
+      clearDraft,
+      isOpen: () => open,
       token: () => (need(), token),
       repoName: () => `${conn.owner}/${conn.repo}`,
       lock() {
         open = false;
         c.wipe(mk);
         objKey = null;
+        draftKeyP = null;
         token = null;
         conn = null;
       },

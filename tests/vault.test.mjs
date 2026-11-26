@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as c from '../js/crypto.js';
-import { createVault, newEntry, localStamp } from '../js/vault.js';
+import { createVault, newEntry, newMemory, localStamp } from '../js/vault.js';
 import { memoryStore } from '../js/store.js';
 import { fakeGitHub, fakePasskeys } from './fake-github.mjs';
 
@@ -167,4 +167,43 @@ test('local timestamp carries the offset', () => {
   const s = localStamp(new Date(2026, 10, 25, 21, 41, 5));
   assert.equal(s.date, '2026-11-25');
   assert.match(s.created, /^2026-11-25T21:41:05[+-]\d\d:\d\d$/);
+});
+
+test('offline: listing falls back to cached index and blobs', async () => {
+  const w = world();
+  const a = await setupFirst(w);
+  await a.session.saveItem(newEntry({ text: 'kept for the plane', mood: 6 }));
+  assert.equal((await a.session.listItems()).offline, false);
+  w.gh.state.online = false;
+  const items = await a.session.listItems();
+  assert.equal(items.offline, true);
+  assert.equal(items[0].payload.text, 'kept for the plane');
+  await assert.rejects(a.session.saveItem(newEntry({ text: 'x', mood: 1 })), /Network error/);
+});
+
+test('drafts are encrypted, survive lock, and die with the wrong key', async () => {
+  const w = world();
+  const a = await setupFirst(w);
+  await a.session.saveDraft('entry', { text: 'half-written secret draft', mood: 4, tags: ['x'] });
+  const raw = JSON.stringify(await a.store.get('kv', 'draft:entry'));
+  assert.ok(!raw.includes('secret'));
+  a.session.lock();
+  await assert.rejects(a.session.saveDraft('entry', { text: 'y' }), /Locked/);
+  const again = await a.vault.unlock();
+  assert.deepEqual(await again.loadDraft('entry'), { text: 'half-written secret draft', mood: 4, tags: ['x'] });
+  assert.equal(await again.loadDraft('memory'), null);
+  await again.clearDraft('entry');
+  assert.equal(await again.loadDraft('entry'), null);
+});
+
+test('memories save and list with entries', async () => {
+  const w = world();
+  const a = await setupFirst(w);
+  await a.session.saveItem(newMemory({ when: { precision: 'year', value: '2010' }, chapter: 'School', text: 'fake memory' }));
+  await a.session.saveItem(newEntry({ text: 'fake entry', mood: 7 }));
+  const items = await a.session.listItems();
+  assert.deepEqual(items.map((x) => x.payload.kind).sort(), ['entry', 'memory']);
+  const m = items.find((x) => x.payload.kind === 'memory').payload;
+  assert.equal(m.chapter, 'School');
+  assert.equal(m.analyze, true);
 });

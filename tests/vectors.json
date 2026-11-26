@@ -40,6 +40,12 @@
   },
   {
    "ikm": "kI0oJAFeje659RGzM8xP/ksaj10nc+qY++Pcv0W5Ex4=",
+   "salt": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+   "info": "diary-draft-v1",
+   "okm": "EcBosDPvzgSUDTPl5+ZtwIP6UDpqduEJqDez8I6M0YQ="
+  },
+  {
+   "ikm": "kI0oJAFeje659RGzM8xP/ksaj10nc+qY++Pcv0W5Ex4=",
    "salt": "N6bqNz46n1KnOPSYONkoDg==",
    "info": "diary-recovery-v1",
    "okm": "UqRZhr/wEAzVoSHnG6Lle2+F0A5KXgAOuObxg8YUZ9w="

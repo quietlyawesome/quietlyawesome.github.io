@@ -119,6 +119,14 @@ def keyring_case():
     }
 
 
+def sealed_cases():
+    prf = fake("seal-prf")
+    obj = {"owner": "example-owner", "repo": "example-data", "token": "github_pat_FAKE0000000000"}
+    iv = fake("seal-iv", 12)
+    box = c.seal_json(c.token_key(prf), "device-secrets", obj, iv)
+    return [{"prf": b(prf), "aad": "device-secrets", "obj": obj, "iv": b(iv), "box": box}]
+
+
 def raw_object(mk, path, plaintext, iv, v=1):
     raw = AESGCM(c.hkdf(mk, c.INFO["object"])).encrypt(iv, plaintext, path.encode())
     return c._dumps({"v": v, "alg": "A256GCM", "iv": b(iv), "ct": b(raw)})
@@ -130,7 +138,7 @@ def flip(b64, i):
     return b(bytes(data))
 
 
-def bad_cases(objs, wraps, kr):
+def bad_cases(objs, wraps, kr, sealed):
     o = objs[1]
     other = c.new_object_path(fake("bad-other", 16))
     f = json.loads(o["file"])
@@ -168,6 +176,8 @@ def bad_cases(objs, wraps, kr):
         {"case": "phrase from other secret", "op": "unlockRecovery", "keyring": kr["keyring"], "phrase": other_phrase},
         {"case": "wrong passkey prf", "op": "unlockPasskey", "keyring": kr["keyring"], "credId": kr["inputs"]["credId"], "prf": b(fake("bad-prf"))},
         {"case": "unknown passkey", "op": "unlockPasskey", "keyring": kr["keyring"], "credId": b(fake("bad-cred", 16)), "prf": kr["inputs"]["prf"]},
+        {"case": "sealed box wrong aad", "op": "openSealed", "prf": sealed[0]["prf"], "aad": "other", "box": sealed[0]["box"]},
+        {"case": "sealed box wrong prf", "op": "openSealed", "prf": b(fake("bad-prf")), "aad": sealed[0]["aad"], "box": sealed[0]["box"]},
         {"case": "keyring version 2", "op": "unlockRecovery", "keyring": {**kr["keyring"], "v": 2}, "phrase": p},
     ]
 
@@ -181,6 +191,8 @@ def run_bad(v):
         return c.unwrap_mk(v["wrap"], keys[v["keyType"]]())
     if v["op"] == "phrase":
         return c.phrase_to_secret(v["phrase"])
+    if v["op"] == "openSealed":
+        return c.open_json(c.token_key(d(v["prf"])), v["aad"], v["box"])
     if v["op"] == "unlockRecovery":
         return c.unlock_with_recovery(v["keyring"], v["phrase"])
     if v["op"] == "unlockPasskey":
@@ -203,6 +215,7 @@ def main():
     objs = object_cases()
     wraps = wrap_cases()
     kr = keyring_case()
+    sealed = sealed_cases()
     vectors = {
         "v": 1,
         "note": "Fake data only. Regenerate with: cli/.venv/bin/python tests/make_vectors.py",
@@ -213,7 +226,8 @@ def main():
         "wrap": wraps,
         "object": objs,
         "keyring": kr,
-        "bad": with_errors(bad_cases(objs, wraps, kr)),
+        "sealed": sealed,
+        "bad": with_errors(bad_cases(objs, wraps, kr, sealed)),
     }
     out = ROOT / "tests" / "vectors.json"
     out.write_text(json.dumps(vectors, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")

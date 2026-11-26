@@ -76,12 +76,21 @@ test('keyring: build, unlock three ways, recovery phrase alone rebuilds MK', asy
   assert.deepEqual(payload, o.payload);
 });
 
+test('sealed device secrets', async () => {
+  for (const v of V.sealed) {
+    const key = await c.tokenKey(d(v.prf));
+    assert.deepEqual(await c.sealJSON(key, v.aad, v.obj, d(v.iv)), v.box);
+    assert.deepEqual(await c.openJSON(key, v.aad, v.box), v.obj);
+  }
+});
+
 test('bad inputs are rejected', async () => {
   for (const v of V.bad) {
     const run = async () => {
       if (v.op === 'decrypt') return c.decryptBytes(await c.objectKey(d(v.mk)), v.path, v.file);
       if (v.op === 'unwrap') return c.unwrapMK(v.wrap, await keyFor(v.keyType, d(v.ikm), d(v.salt)));
       if (v.op === 'phrase') return c.phraseToSecret(v.phrase);
+      if (v.op === 'openSealed') return c.openJSON(await c.tokenKey(d(v.prf)), v.aad, v.box);
       if (v.op === 'unlockRecovery') return c.unlockWithRecovery(v.keyring, v.phrase);
       if (v.op === 'unlockPasskey') return c.unlockWithPasskey(v.keyring, d(v.credId), d(v.prf));
       throw new Error('unknown op ' + v.op);

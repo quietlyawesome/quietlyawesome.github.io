@@ -8,6 +8,7 @@ export const INFO = Object.freeze({
   recovery: 'diary-recovery-v1',
   mac: 'diary-mac-v1',
   object: 'diary-object-v1',
+  check: 'diary-check-v1',
 });
 export const BUCKETS = Object.freeze([4096, 16384, 65536, 262144]);
 
@@ -91,6 +92,24 @@ async function open(key, iv, ct, aad) {
   } catch {
     fail('decrypt failed');
   }
+}
+
+export async function sealJSON(key, aad, obj, iv = randomBytes(12)) {
+  return { iv: b64enc(iv), ct: b64enc(await seal(key, iv, te.encode(JSON.stringify(obj)), aad)) };
+}
+
+export async function openJSON(key, aad, box) {
+  if (!box || typeof box !== 'object') fail('bad sealed box');
+  const data = await open(key, b64dec(box.iv), b64dec(box.ct), aad);
+  try {
+    return JSON.parse(td.decode(data));
+  } catch {
+    fail('bad sealed box');
+  }
+}
+
+export function wipe(bytes) {
+  if (bytes) bytes.fill(0);
 }
 
 export function newMasterKey() {

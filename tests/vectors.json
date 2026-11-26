@@ -34,6 +34,12 @@
   },
   {
    "ikm": "kI0oJAFeje659RGzM8xP/ksaj10nc+qY++Pcv0W5Ex4=",
+   "salt": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+   "info": "diary-check-v1",
+   "okm": "ff4ST+jvS4wXqkTfNOVhqzo5tTe+AEektWIjO/kYFvU="
+  },
+  {
+   "ikm": "kI0oJAFeje659RGzM8xP/ksaj10nc+qY++Pcv0W5Ex4=",
    "salt": "N6bqNz46n1KnOPSYONkoDg==",
    "info": "diary-recovery-v1",
    "okm": "UqRZhr/wEAzVoSHnG6Lle2+F0A5KXgAOuObxg8YUZ9w="
@@ -229,6 +235,22 @@
    }
   }
  },
+ "sealed": [
+  {
+   "prf": "yc3s5I4IOwIFcA5ssDmIZUQen7rNR/Et1HV0r/gS0fI=",
+   "aad": "device-secrets",
+   "obj": {
+    "owner": "example-owner",
+    "repo": "example-data",
+    "token": "github_pat_FAKE0000000000"
+   },
+   "iv": "7OQKhTNGhwbsU+Qs",
+   "box": {
+    "iv": "7OQKhTNGhwbsU+Qs",
+    "ct": "VGm5AL4PgKBMnwMtd9SonE2+POz5/j3cbZXCG64PMrxkLyvlQOUeV/osa7NSAIua3/MGXo2P66xWZ9mtIsc93MhwtI1sPxhLjItwzfaI00vqVMSualh5f7mEDMRt9Q7Xo7LH"
+   }
+  }
+ ],
  "bad": [
   {
    "case": "wrong path AAD",
@@ -477,6 +499,28 @@
    "credId": "FjlE5TarlQzVfxfiYmliGw==",
    "prf": "peHpHrPYsApBgY/BrL5YP5DMbZ3z7jUS1h3PGMIH1zA=",
    "error": "passkey does not match"
+  },
+  {
+   "case": "sealed box wrong aad",
+   "op": "openSealed",
+   "prf": "yc3s5I4IOwIFcA5ssDmIZUQen7rNR/Et1HV0r/gS0fI=",
+   "aad": "other",
+   "box": {
+    "iv": "7OQKhTNGhwbsU+Qs",
+    "ct": "VGm5AL4PgKBMnwMtd9SonE2+POz5/j3cbZXCG64PMrxkLyvlQOUeV/osa7NSAIua3/MGXo2P66xWZ9mtIsc93MhwtI1sPxhLjItwzfaI00vqVMSualh5f7mEDMRt9Q7Xo7LH"
+   },
+   "error": "decrypt failed"
+  },
+  {
+   "case": "sealed box wrong prf",
+   "op": "openSealed",
+   "prf": "OkRS80ZsXYN6mkYNnZWrhdhykzHyayK5+Hk5rLYOlhk=",
+   "aad": "device-secrets",
+   "box": {
+    "iv": "7OQKhTNGhwbsU+Qs",
+    "ct": "VGm5AL4PgKBMnwMtd9SonE2+POz5/j3cbZXCG64PMrxkLyvlQOUeV/osa7NSAIua3/MGXo2P66xWZ9mtIsc93MhwtI1sPxhLjItwzfaI00vqVMSualh5f7mEDMRt9Q7Xo7LH"
+   },
+   "error": "decrypt failed"
   },
   {
    "case": "keyring version 2",

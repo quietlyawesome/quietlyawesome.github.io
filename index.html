@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src https://api.github.com; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="dark">
+<title>Odometer</title>
+<link rel="stylesheet" href="css/app.css">
+<script type="module" src="js/app.js"></script>
+</head>
+<body>
+<main>
+  <h1>Odometer</h1>
+  <p id="status" class="status" role="status" aria-live="polite"></p>
+
+  <section id="setup" hidden>
+    <h2>Set up this device</h2>
+    <p class="muted">Data repository and a fine-grained GitHub token (Contents: read and write, this repository only).</p>
+    <form id="setup-form" autocomplete="off">
+      <label for="repo">Repository</label>
+      <input id="repo" name="repo" placeholder="owner/name" autocapitalize="off" spellcheck="false" required>
+      <label for="token">Token</label>
+      <input id="token" name="token" type="password" placeholder="github_pat_…" autocapitalize="off" spellcheck="false" required>
+      <button id="setup-go" type="submit">Continue with Face ID</button>
+    </form>
+  </section>
+
+  <section id="recovery" hidden>
+    <h2>Your recovery phrase</h2>
+    <p class="muted">Write it on paper. It is the only way back in if you lose every device. It is not stored anywhere.</p>
+    <ol id="phrase" class="phrase"></ol>
+    <form id="recovery-form" autocomplete="off">
+      <label id="check-a-label" for="check-a">Group</label>
+      <input id="check-a" autocapitalize="characters" spellcheck="false" maxlength="4" required>
+      <label id="check-b-label" for="check-b">Group</label>
+      <input id="check-b" autocapitalize="characters" spellcheck="false" maxlength="4" required>
+      <button id="recovery-go" type="submit">I wrote it down. Finish setup</button>
+    </form>
+  </section>
+
+  <section id="locked" hidden>
+    <button id="unlock" type="button">Unlock with Face ID</button>
+    <button id="forget" type="button" class="link">Forget this device</button>
+  </section>
+
+  <section id="main" hidden>
+    <div class="bar">
+      <span id="today" class="muted"></span>
+      <button id="copy-token" type="button" class="link">Copy token</button>
+      <button id="lock" type="button" class="link">Lock</button>
+    </div>
+    <form id="entry-form">
+      <label for="mood">Mood <output id="mood-out" for="mood">5</output></label>
+      <input id="mood" type="range" min="1" max="10" value="5">
+      <label for="text">Entry</label>
+      <textarea id="text" rows="8" required></textarea>
+      <button id="save" type="submit">Save entry</button>
+    </form>
+    <h2>Entries</h2>
+    <ul id="entries" class="entries"></ul>
+  </section>
+
+  <p class="muted small">End-to-end encrypted</p>
+</main>
+</body>
+</html>

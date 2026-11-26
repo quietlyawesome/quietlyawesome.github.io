@@ -79,6 +79,13 @@ def test_keyring_and_recovery_alone():
     assert c.decrypt_object(c.object_key(mk), o["path"], o["file"]) == o["payload"]
 
 
+def test_sealed():
+    for v in V["sealed"]:
+        key = c.token_key(d(v["prf"]))
+        assert c.seal_json(key, v["aad"], v["obj"], d(v["iv"])) == v["box"]
+        assert c.open_json(key, v["aad"], v["box"]) == v["obj"]
+
+
 @pytest.mark.parametrize("v", V["bad"], ids=[v["case"] for v in V["bad"]])
 def test_bad_inputs(v):
     with pytest.raises(c.CryptoError) as err:

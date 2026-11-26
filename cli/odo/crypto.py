@@ -16,6 +16,7 @@ INFO = {
     "recovery": "diary-recovery-v1",
     "mac": "diary-mac-v1",
     "object": "diary-object-v1",
+    "check": "diary-check-v1",
 }
 BUCKETS = (4096, 16384, 65536, 262144)
 
@@ -88,6 +89,21 @@ def _open(key, iv, ct, aad):
         return key.decrypt(iv, ct, aad.encode())
     except InvalidTag:
         raise CryptoError("decrypt failed") from None
+
+
+def seal_json(key, aad, obj, iv=None):
+    iv = iv or random_bytes(12)
+    return {"iv": b64enc(iv), "ct": b64enc(_seal(key, iv, _dumps(obj).encode(), aad))}
+
+
+def open_json(key, aad, box):
+    if not isinstance(box, dict):
+        raise CryptoError("bad sealed box")
+    data = _open(key, b64dec(box.get("iv")), b64dec(box.get("ct")), aad)
+    try:
+        return json.loads(data.decode("utf-8"))
+    except ValueError:
+        raise CryptoError("bad sealed box") from None
 
 
 def new_master_key():

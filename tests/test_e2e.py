@@ -32,7 +32,7 @@ def test_js_entries_decrypt_in_python_with_phrase_alone(clone):
 def test_cli_read(clone, monkeypatch, capsys):
     root, info = clone
     monkeypatch.setattr("getpass.getpass", lambda prompt: info["phrase"].lower().replace("-", " "))
-    main(["read", str(root)])
+    main(["read", str(root), "--phrase", "--no-pull"])
     out = capsys.readouterr().out
     assert info["texts"][1] in out
     assert "3 item(s)" in out
@@ -43,4 +43,4 @@ def test_cli_wrong_phrase(clone, monkeypatch):
     other = c.secret_to_phrase(bytes(32))
     monkeypatch.setattr("getpass.getpass", lambda prompt: other)
     with pytest.raises(SystemExit, match="does not match"):
-        main(["read", str(root)])
+        main(["read", str(root), "--phrase", "--no-pull"])
